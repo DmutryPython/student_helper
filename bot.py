@@ -10,8 +10,8 @@ from telegram.ext import (
     ConversationHandler
 )
 from audio_processor import AudioProcessor
-# from text_analyzer import TextAnalyzer
-# from report_generator import ReportGenerator
+from text_analyzer import TextAnalyzer
+from report_generator import ReportGenerator
 import config
 from dotenv import load_dotenv
 
@@ -24,7 +24,7 @@ WAITING_TEXT, WAITING_VOICE = 0, 1
 class SpeechAnalystBot:
     def __init__(self):
         self.audio_processor = AudioProcessor()
-
+        self.text_analyzer = TextAnalyzer()
         self.user_data = {}
         self.logger = logging.getLogger(__name__)
         logging.basicConfig(
@@ -55,7 +55,7 @@ class SpeechAnalystBot:
         chat_id = update.effective_chat.id
         text = update.message.text
 
-
+        # Сохраняем текст для последующей обработки
         self.user_data[chat_id] = {"paragraph": text}
         self.logger.info("Пользователь %s отправил текст: %s", chat_id, text[:50] + "...")
 
@@ -71,7 +71,7 @@ class SpeechAnalystBot:
         chat_id = update.effective_chat.id
         self.logger.info("Пользователь %s отправил голосовое сообщение", chat_id)
 
-
+        # Проверяем, что текст был отправлен ранее
         if chat_id not in self.user_data or "paragraph" not in self.user_data[chat_id]:
             await update.message.reply_text(
                 "⚠️ Сначала отправь текстовый параграф командой /start!"
@@ -79,12 +79,12 @@ class SpeechAnalystBot:
             return WAITING_TEXT
 
         try:
-
+            # Скачивание и обработка аудио
             voice_file = await update.message.voice.get_file()
             audio_path = f"temp_{chat_id}.ogg"
             await voice_file.download_to_drive(audio_path)
 
-
+            # Показываем статус обработки
             await update.message.reply_text("🔍 Обрабатываю твой ответ...")
 
             # Транскрибация
@@ -93,18 +93,19 @@ class SpeechAnalystBot:
 
             # Анализ
             paragraph = self.user_data[chat_id]["paragraph"]
+            reference = self.text_analyzer.generate_reference(paragraph)
+            structure = self.text_analyzer.analyze_structure(user_text, reference)
+            parasites = self.text_analyzer.analyze_parasites(user_text)
 
-
-
-            # report = ReportGenerator.generate(structure, parasites)
-            report = paragraph  + user_text
+            # Формирование отчета
+            report = ReportGenerator.generate(structure, parasites)
             await update.message.reply_text(report)
 
-
+            # Удаление временных данных
             os.remove(audio_path)
             del self.user_data[chat_id]
 
-
+            # Предложение начать заново
             await update.message.reply_text(
                 "🔄 Хочешь попробовать с другим текстом? Отправь /start чтобы начать сначала!"
             )
@@ -118,7 +119,7 @@ class SpeechAnalystBot:
                 "Попробуй отправить голосовое сообщение еще раз или начни заново командой /start."
             )
 
-
+            # Сохраняем состояние для повторной попытки
             return WAITING_VOICE
 
     async def cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -149,7 +150,7 @@ class SpeechAnalystBot:
         """Запуск бота с обработчиком диалога"""
         app = Application.builder().token(os.getenv("TELEGRAM_BOT_TOKEN")).build()
 
-
+        # Обработчик диалога
         conv_handler = ConversationHandler(
             entry_points=[CommandHandler('start', self.start)],
             states={

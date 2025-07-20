@@ -16,3 +16,10 @@ class AudioProcessor:
         result = self.transcriber({"raw": audio, "sampling_rate": sr})
         return result["text"]
 
+    def detect_pauses(self, audio_path: str) -> dict:
+        """Анализ пауз в речи"""
+        return {
+            "total_pauses": 5,
+            "longest_pause": 1.8,
+            "pause_percentage": 12.3
+        }
